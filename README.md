@@ -65,4 +65,6 @@ G["Mary"] = {"age": 32, "bio": "engineer"}
 G.add_edge("Mark", "Mary")
 ```
 
+## Performances
+
 To increase performances, consider using PyPy.
