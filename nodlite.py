@@ -7,7 +7,7 @@ from pickle import dumps, loads
 from queue import Queue
 from threading import Thread
 
-__version__ = "0.0.0"
+__version__ = "0.0.1"
 
 
 class Action(Enum):
@@ -88,25 +88,23 @@ class Graph:
         self.close()
 
     def _create_tables(self):
-        MAKE_NODE_TABLE = '''
+        MAKE_TABLES = '''
             CREATE TABLE IF NOT EXISTS nodes (
-                key TEXT NOT NULL PRIMARY KEY,
-                attributes BLOB)
-        '''
-        self.conn.execute(MAKE_NODE_TABLE)
-
-        MAKE_EDGE_TABLE = '''
+                key TEXT VIRTUAL NOT NULL UNIQUE,
+                attributes BLOB);
             CREATE TABLE IF NOT EXISTS edges (
                 source TEXT NOT NULL,
                 target TEXT NOT NULL,
-                UNIQUE(source, target) ON CONFLICT IGNORE)
+                UNIQUE(source, target) ON CONFLICT IGNORE,
+                FOREIGN KEY(source) REFERENCES nodes(key),
+                FOREIGN KEY(target) REFERENCES nodes(key)
+            )
         '''
-        self.conn.execute(MAKE_EDGE_TABLE)
+        self.conn.executescript(MAKE_TABLES)
 
         CREATE_EDGE_INDEX = '''
-            CREATE INDEX IF NOT EXISTS source_target ON edges (source, target);
-            CREATE INDEX IF NOT EXISTS source_edge ON edges (source);
-            CREATE INDEX IF NOT EXISTS target_edge ON edges (target);
+            CREATE INDEX IF NOT EXISTS source_idx ON edges (source);
+            CREATE INDEX IF NOT EXISTS target_idx ON edges (target);
         '''
         self.conn.executescript(CREATE_EDGE_INDEX)
 
@@ -217,7 +215,6 @@ class Graph:
     def neighbors(self, source):
         GET_NEIGHBORS = '''
             SELECT target FROM "edges" WHERE source = ?
-            ORDER BY rowid
         '''
         for it in self.conn.select(GET_NEIGHBORS, (source,)):
             yield it[0]
@@ -226,7 +223,6 @@ class Graph:
         QUERY = ', '.join(["?" for _ in range(len(nodes))])
         GET_NEIGHBORS = f'''
             SELECT source, target FROM "edges" WHERE source IN ({QUERY})
-            ORDER BY rowid
         '''
         data = {}
         for src, tgt in self.conn.select(GET_NEIGHBORS, nodes):
@@ -245,7 +241,6 @@ class Graph:
     def predecessors(self, target):
         GET_PREDECESSORS = '''
             SELECT source FROM "edges" WHERE target = ?
-            ORDER BY rowid
         '''
         for it in self.conn.select(GET_PREDECESSORS, (target,)):
             yield it[0]
@@ -254,7 +249,6 @@ class Graph:
         QUERY = ', '.join(["?" for _ in range(len(nodes))])
         GET_PREDECESSORS = f'''
             SELECT source, target FROM "edges" WHERE target IN ({QUERY})
-            ORDER BY rowid
         '''
         data = {}
         for src, tgt in self.conn.select(GET_PREDECESSORS, nodes):
@@ -273,7 +267,6 @@ class Graph:
     def degree(self, source):
         GET_DEGREE = '''
             SELECT COUNT(target) FROM "edges" WHERE source = ?
-            ORDER BY rowid
         '''
         return next(self.conn.select(GET_DEGREE, (source,)))[0]
 
@@ -366,7 +359,8 @@ class GraphMultithread(Thread):
             else:
                 cursor.execute(req, arg)
                 if res:
-                    for rec in cursor:
+                    records = cursor.fetchall()
+                    for rec in records:
                         res.put(rec)
                     res.put(Action.END)
         conn.close()
