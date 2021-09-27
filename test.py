@@ -15,4 +15,5 @@ G = Graph("test.db")
 G.add_node(0, name="my name is 0")
 for i in tqdm(range(M)):
     G.add_edge(randint(0, N-1), randint(0, N-1))
-print(G)
+print(G.n_nodes)
+print(G.n_edges)

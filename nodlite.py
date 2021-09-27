@@ -7,7 +7,7 @@ from pickle import dumps, loads
 from queue import Queue
 from threading import Thread
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 
 class Action(Enum):
@@ -108,6 +108,14 @@ class Graph:
         '''
         self.conn.executescript(CREATE_EDGE_INDEX)
 
+        CREATE_COUNT_VIEW = '''
+            CREATE VIEW IF NOT EXISTS count_nodes(n_nodes)
+                AS SELECT COUNT(*) FROM nodes;
+            CREATE VIEW IF NOT EXISTS count_edges(n_edges)
+                AS SELECT COUNT(*) FROM edges;
+        '''
+        self.conn.executescript(CREATE_COUNT_VIEW)
+
         self.conn.commit()
 
     def close(self):
@@ -115,12 +123,12 @@ class Graph:
 
     @property
     def n_nodes(self):
-        GET_N_NODES = 'SELECT COUNT(key) FROM "nodes"'
+        GET_N_NODES = 'SELECT n_nodes FROM "count_nodes"'
         return next(self.conn.select(GET_N_NODES))[0]
 
     @property
     def n_edges(self):
-        GET_N_EDGES = 'SELECT COUNT(source) FROM "edges"'
+        GET_N_EDGES = 'SELECT n_edges FROM "count_edges"'
         return next(self.conn.select(GET_N_EDGES))[0]
 
     def node(self, key):
@@ -194,6 +202,8 @@ class Graph:
 
     def add_edges_from(self, edges):
         n_edges = len(edges)
+        if n_edges == 0:
+            return
         edges = list(itertools.chain(*edges))
         nodes = list(set(edges))
 
@@ -258,11 +268,20 @@ class Graph:
     def set_predecessors(self, u, predecessors):
         # delete all edges starting from u
         DEL_EDGES = 'DELETE FROM "edges" WHERE target = ?'
-        self.conn.execute(DEL_EDGES, (u,))
+        self.conn.execute(DEL_EDGES, (u, 2))
 
         # add all edges
         edges = [(tgt, u) for tgt in predecessors]
         self.add_edges_from(edges)
+
+    def subgraph(self, nodes):
+        QUERY = ', '.join(["?" for _ in range(len(nodes))])
+        GET_SUBGRAPH = f'''
+            SELECT source, target FROM "edges"
+            WHERE source IN ({QUERY}) AND target IN ({QUERY})
+        '''
+        for it in self.conn.select(GET_SUBGRAPH, nodes * 2):
+            yield it
 
     def degree(self, source):
         GET_DEGREE = '''
@@ -270,15 +289,33 @@ class Graph:
         '''
         return next(self.conn.select(GET_DEGREE, (source,)))[0]
 
-    @property
+    @ property
     def nodes(self):
         GET_NODES = 'SELECT key, attributes FROM "nodes" ORDER BY rowid'
         for it in self.conn.select(GET_NODES):
             yield it[0]
 
-    @property
+    @ property
     def edges(self):
         GET_EDGES = 'SELECT source, target FROM "edges" ORDER BY rowid'
+        for it in self.conn.select(GET_EDGES):
+            yield it
+
+    def batch_get_nodes(self, batch_size=100, page=0):
+        offset = page * batch_size
+        GET_NODES = f'''
+        SELECT key FROM "nodes" ORDER BY rowid
+        LIMIT {batch_size} OFFSET {offset}
+        '''
+        for it in self.conn.select(GET_NODES):
+            yield it[0]
+
+    def batch_get_edges(self, batch_size=100, page=0):
+        offset = page * batch_size
+        GET_EDGES = f'''
+        SELECT source, target FROM "edges" ORDER BY rowid
+        LIMIT {batch_size} OFFSET {offset}
+        '''
         for it in self.conn.select(GET_EDGES):
             yield it
 
