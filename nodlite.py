@@ -62,7 +62,7 @@ class Graph:
         self,
         filename,
         journal_mode="OFF",
-        zip=True
+        zip=False
     ):
         self.filename = filename
         self.journal_mode = journal_mode
@@ -293,7 +293,9 @@ class Graph:
     def nodes(self):
         GET_NODES = 'SELECT key, attributes FROM "nodes" ORDER BY rowid'
         for it in self.conn.select(GET_NODES):
-            yield it[0]
+            if it[1] is None:
+                yield it[0]
+            yield Node(it[0], self.decode(it[1]))
 
     @ property
     def edges(self):
@@ -379,9 +381,10 @@ class GraphMultithread(Thread):
         cursor = conn.cursor()
 
         conn.execute(f'PRAGMA journal_mode={self.journal_mode}')
-        conn.execute('PRAGMA synchronous=OFF')
         conn.commit()
         cursor = conn.cursor()
+        cursor.execute('PRAGMA synchronous=OFF')
+        conn.commit()
         self._ready = True
 
         res = None
@@ -400,6 +403,7 @@ class GraphMultithread(Thread):
                     for rec in records:
                         res.put(rec)
                     res.put(Action.END)
+                # conn.commit()
         conn.close()
 
     def execute(self, req, arg=None, res=None):
