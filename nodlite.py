@@ -228,6 +228,19 @@ class Graph:
         '''
         for it in self.conn.select(GET_NEIGHBORS, (source,)):
             yield it[0]
+    
+    def random_neighbors(self, source, n=1):
+        GET_RANDOM_NEIGHBORS = f'''
+            SELECT target FROM "edges" WHERE source = ?
+            ORDER BY RANDOM() LIMIT {n};
+        '''
+        if n == 1:
+            return next(self.conn.select(GET_RANDOM_NEIGHBORS, (source,)))[0]
+        else:
+            res = []
+            for it in self.conn.select(GET_RANDOM_NEIGHBORS, (source,)):
+                res.append(it[0])
+            return res
 
     def neighbors_from(self, nodes):
         QUERY = ', '.join(["?" for _ in range(len(nodes))])
@@ -254,6 +267,19 @@ class Graph:
         '''
         for it in self.conn.select(GET_PREDECESSORS, (target,)):
             yield it[0]
+
+    def random_predecessors(self, target, n=1):
+        GET_RANDOM_PREDECESSORS = f'''
+            SELECT source FROM "edges" WHERE target = ?
+            ORDER BY RANDOM() LIMIT {n};
+        '''
+        if n == 1:
+            return next(self.conn.select(GET_RANDOM_PREDECESSORS, (target,)))[0]
+        else:
+            res = []
+            for it in self.conn.select(GET_RANDOM_PREDECESSORS, (target,)):
+                res.append(it[0])
+            return res
 
     def predecessors_from(self, nodes):
         QUERY = ', '.join(["?" for _ in range(len(nodes))])
